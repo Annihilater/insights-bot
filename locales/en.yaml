@@ -1,0 +1,102 @@
+system:
+  commands:
+    groups:
+      basic:
+        name: Basic Commands
+        commands:
+          start:
+            help: Begin interacting with the bot
+          help:
+            help: Obtain assistance
+            message: |
+              Greetings! 👋 Welcome to using Insights Bot!
+
+              I currently support these commands:
+
+              {{ .Commands }}
+          cancel:
+            help: Cancel any ongoing operations.
+            alreadyCancelledAll: No ongoing operations to cancel
+
+modules:
+  telegram:
+    chatMigration: ''
+  notification: |
+    {{.Name}} @{{.Username}} has observed your group's upgrading to a <b>supergroup</b>, where the group ID will change. Rest assured, we've smoothly transitioned all historical data to the new group ID, while maintaining all your settings unaltered. However, due to Telegram's limitations, message IDs from before the upgrade won't match those sent after and will thus be excluded from future summaries. We regret any inconvenience caused by such migrations.
+
+welcome:
+  messageSuperGroup: |
+    🤗 Welcome to @{{.Username}}!
+
+    - Use /smr@{{.Username}} <code>article link</code> for web article summaries.
+
+    - For chat history summaries, please assign me as admin (all permissions can be omitted) using a <b>non-anonymous identity</b> (recommended, otherwise permission validation may fail. Then, start /configure_recap@{{.Username}} to configure chat recap.
+
+    - Revoking my admin role will prompt me to delete all recorded messages, along with historical data and logs (only if no modifications have been made by other bot operators).
+
+    Questions?
+
+    1. Enter /help@{{.Username}} for command information.
+    2. Submit an issue at the <a href="https://github.com/nekomeowww/insights-bot">open-source repository</a> for further details from the developers.
+
+  messageNormalGroup: |
+    🤗 Welcome to @{{.Username}}!
+
+    - Use /smr@{{.Username}} <code>article link</code> for article readings.
+
+    - For chat history summaries, please assign me as admin (all permissions can be omitted) using a <b>non-anonymous identity</b> (recommended, otherwise permission validation may fail. Then, start /configure_recap@{{.Username}} to configure chat recap.
+
+    - Removing my admin status is a simple way to delete all bot-recorded messages, automatically purging bot data unless modifications have been made by another maintainer.
+
+    ⚠️ Your group isn't a supergroup yet; message reference linking will not work.
+
+    To enable message reference linking:
+
+    - Temporarily switch your group to public, then revert to private.
+    - Upgrade to a supergroup by other means.
+
+    Questions?
+
+    1. Consult /help@{{.Username}} for command details.
+    2. Visit our <a href="https://github.com/nekomeowww/insights-bot">GitHub</a> for support.
+
+    Enjoy your experience!
+
+commands:
+  groups:
+    summarization:
+      name: Quantum Speed-Reading
+      commands:
+        smr:
+          help: Enhance your article reading with Quantum Speed-Reading. This feature enables rapid understanding of web content and is compatible across messaging platforms. Initiate with :/smr <code>&lt;link&gt;</code>.
+          noLinksFound: 
+            telegram: No link detected. Please provide a valid URL to proceed. Example usage:<code>/smr &lt;link&gt;</code>.
+            slackOrDiscord: No link detected. Please provide a valid URL to proceed. Example usage:`/smr <link>`.
+          invalidLink: 
+            telegram: The link provided could not be processed. Please ensure the URL is correct and try again. Usage:<code>/smr &lt;link&gt;</code>.
+            slackOrDiscord: The link provided could not be processed. Please ensure the URL is correct and try again. Usage:`/smr <link>`.
+          reading: Quantum Speed-Reading is currently processing your request, please wait...
+          rateLimitExceeded: Apologies, but you've reached the rate limit to maintain service stability. This command is accessible once every {{ .Seconds }} seconds. Kindly wait {{ .SecondsToBeWaited }} seconds before attempting again. We appreciate your patience and comprehension.
+          failedToRead: Quantum Speed-Reading was unsuccessful. Would you like to retry?
+          failedToReadDueToFailedToFetch: Encountered an issue retrieving the content for Quantum Speed-Reading. Perhaps another attempt might succeed?
+          contentNotSupported: This content is not supported by Quantum Speed-Reading. Considering another link might be beneficial.
+          retry: Retry
+
+prompts:
+  smr:
+    - role: system
+      content: |
+        You are my web article reading assistant. I will supply you with the article's title, author, and the main content from the web page, after which you will summarize the article. Please adhere to the following guidelines for summarizing:
+        1. First, if the article's title is not in English, kindly translate it into English with elegance and accuracy according to the context, placing it at the top.
+        2. Then, provide a summary of the article in no more than 300 words based on the provided information.
+        3. Lastly, leveraging your existing knowledge and experience, devise 3 inventive and broad questions related to the provided information.
+        4. Responses should be in English.
+        Follow this example format (substitute the double curly braces accordingly): 
+        {{English title, optional}}\n\nSummary: {{Summary of the article}}\n\nRelated Questions:\n1. {{Related Question 1}}\n2. {{Related Question 2}}\n3. {{Related Question 3}}
+    - role: user
+      content: |
+        The information for my initial request is as follows:
+        Article title: {{ .Title }}
+        Article author: {{ .By }}
+        Article content: {{ .Content }}
+        Kindly fulfill the requested task.

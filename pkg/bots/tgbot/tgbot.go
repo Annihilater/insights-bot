@@ -229,6 +229,7 @@ func (b *BotService) Start(ctx context.Context) error {
 
 		b.startPullUpdates()
 		b.webhookStarted = true
+
 		return nil
 	})
 }
@@ -249,6 +250,36 @@ func (b *BotService) Bot() *Bot {
 		logger:        b.logger,
 		rueidisClient: b.opts.rueidisClient,
 	}
+}
+
+func (b *BotService) MayMakeRequest(endpoint string, params tgbotapi.Params) *tgbotapi.APIResponse {
+	may := fo.NewMay[*tgbotapi.APIResponse]().Use(func(err error, messageArgs ...any) {
+		b.logger.Error("failed to send request to telegram endpoint: "+endpoint, zap.String("request", xo.SprintJSON(params)), zap.Error(err))
+	})
+
+	return may.Invoke(b.MakeRequest(endpoint, params))
+}
+
+func (b *BotService) PinChatMessage(config PinChatMessageConfig) error {
+	params, err := config.params()
+	if err != nil {
+		return err
+	}
+
+	b.MayMakeRequest(config.method(), params)
+
+	return err
+}
+
+func (b *BotService) UnpinChatMessage(config UnpinChatMessageConfig) error {
+	params, err := config.params()
+	if err != nil {
+		return err
+	}
+
+	b.MayMakeRequest(config.method(), params)
+
+	return err
 }
 
 type Bot struct {
@@ -419,6 +450,10 @@ func (b *Bot) DeleteAllDeleteLaterMessages(forUserID int64) error {
 	}
 
 	return res.Error()
+}
+
+func (b *Bot) AssignOneNopCallbackQueryData() (string, error) {
+	return b.AssignOneCallbackQueryData("nop", "")
 }
 
 func (b *Bot) AssignOneCallbackQueryData(route string, data any) (string, error) {

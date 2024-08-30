@@ -13,7 +13,7 @@ import (
 	"github.com/nekomeowww/insights-bot/pkg/types/timecapsules"
 )
 
-func (m *Model) findOneFeatureFlag(chatID int64, chatTitle string) (*ent.TelegramChatFeatureFlags, error) {
+func (m *Model) findOneFeatureFlagForGroups(chatID int64, chatTitle string) (*ent.TelegramChatFeatureFlags, error) {
 	featureFlags, err := m.ent.TelegramChatFeatureFlags.
 		Query().
 		Where(
@@ -42,28 +42,81 @@ func (m *Model) findOneFeatureFlag(chatID int64, chatTitle string) (*ent.Telegra
 	return featureFlags, nil
 }
 
-func (m *Model) EnableChatHistoriesRecap(chatID int64, chatType telegram.ChatType, chatTitle string) error {
-	if !lo.Contains([]telegram.ChatType{telegram.ChatTypeGroup, telegram.ChatTypeSuperGroup}, chatType) {
-		return nil
-	}
-
-	featureFlags, err := m.findOneFeatureFlag(chatID, chatTitle)
+func (m *Model) findOrCreateFeatureFlagForGroups(chatID int64, chatType telegram.ChatType, chatTitle string) (*ent.TelegramChatFeatureFlags, error) {
+	featureFlags, err := m.findOneFeatureFlagForGroups(chatID, chatTitle)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if featureFlags == nil {
-		_, err = m.ent.TelegramChatFeatureFlags.
+		createdFeatureFlags, err := m.ent.TelegramChatFeatureFlags.
 			Create().
 			SetChatID(chatID).
 			SetChatTitle(chatTitle).
 			SetChatType(string(chatType)).
-			SetFeatureChatHistoriesRecap(true).
+			SetFeatureChatHistoriesRecap(false).
+			SetFeatureLanguage("en").
 			Save(context.Background())
 		if err != nil {
-			return err
+			return nil, err
 		}
 
+		return createdFeatureFlags, nil
+	}
+
+	return featureFlags, nil
+}
+
+func (m *Model) FindLanguageForGroups(chatID int64, chatTitle string) (string, error) {
+	featureFlags, err := m.findOneFeatureFlagForGroups(chatID, chatTitle)
+	if err != nil {
+		return "en", err
+	}
+	if featureFlags == nil {
+		return "en", nil
+	}
+
+	return featureFlags.FeatureLanguage, nil
+}
+
+func (m *Model) SetLanguageForGroups(chatID int64, chatType telegram.ChatType, chatTitle string, language string) error {
+	if !lo.Contains([]telegram.ChatType{telegram.ChatTypeGroup, telegram.ChatTypeSuperGroup}, chatType) {
 		return nil
+	}
+
+	featureFlags, err := m.findOrCreateFeatureFlagForGroups(chatID, chatType, chatTitle)
+	if err != nil {
+		return err
+	}
+	if featureFlags.FeatureLanguage == language {
+		return nil
+	}
+
+	_, err = m.ent.TelegramChatFeatureFlags.
+		UpdateOne(featureFlags).
+		SetFeatureLanguage(language).
+		Save(context.Background())
+	if err != nil {
+		return err
+	}
+
+	m.logger.Info("set language for chat",
+		zap.Int64("chat_id", chatID),
+		zap.String("chat_title", chatTitle),
+		zap.String("chat_type", string(chatType)),
+		zap.String("language", language),
+	)
+
+	return nil
+}
+
+func (m *Model) EnableChatHistoriesRecapForGroups(chatID int64, chatType telegram.ChatType, chatTitle string) error {
+	if !lo.Contains([]telegram.ChatType{telegram.ChatTypeGroup, telegram.ChatTypeSuperGroup}, chatType) {
+		return nil
+	}
+
+	featureFlags, err := m.findOrCreateFeatureFlagForGroups(chatID, chatType, chatTitle)
+	if err != nil {
+		return err
 	}
 	if featureFlags.FeatureChatHistoriesRecap {
 		return nil
@@ -86,12 +139,12 @@ func (m *Model) EnableChatHistoriesRecap(chatID int64, chatType telegram.ChatTyp
 	return nil
 }
 
-func (m *Model) DisableChatHistoriesRecap(chatID int64, chatType telegram.ChatType, chatTitle string) error {
+func (m *Model) DisableChatHistoriesRecapForGroups(chatID int64, chatType telegram.ChatType, chatTitle string) error {
 	if !lo.Contains([]telegram.ChatType{telegram.ChatTypeGroup, telegram.ChatTypeSuperGroup}, chatType) {
 		return nil
 	}
 
-	featureFlags, err := m.findOneFeatureFlag(chatID, chatTitle)
+	featureFlags, err := m.findOneFeatureFlagForGroups(chatID, chatTitle)
 	if err != nil {
 		return err
 	}
@@ -130,8 +183,8 @@ func (m *Model) DisableChatHistoriesRecap(chatID int64, chatType telegram.ChatTy
 	return nil
 }
 
-func (m *Model) HasChatHistoriesRecapEnabled(chatID int64, chatTitle string) (bool, error) {
-	featureFlags, err := m.findOneFeatureFlag(chatID, chatTitle)
+func (m *Model) HasChatHistoriesRecapEnabledForGroups(chatID int64, chatTitle string) (bool, error) {
+	featureFlags, err := m.findOneFeatureFlagForGroups(chatID, chatTitle)
 	if err != nil {
 		return false, err
 	}
@@ -142,7 +195,16 @@ func (m *Model) HasChatHistoriesRecapEnabled(chatID int64, chatTitle string) (bo
 	return featureFlags.FeatureChatHistoriesRecap, nil
 }
 
-func (m *Model) ListChatHistoriesRecapEnabledChats() ([]*ent.TelegramChatFeatureFlags, error) {
+func (m *Model) HasJoinedGroupsBefore(chatID int64, chatTitle string) (bool, error) {
+	featureFlags, err := m.findOneFeatureFlagForGroups(chatID, chatTitle)
+	if err != nil {
+		return false, err
+	}
+
+	return featureFlags != nil, nil
+}
+
+func (m *Model) ListChatHistoriesRecapEnabledChatsForGroups() ([]*ent.TelegramChatFeatureFlags, error) {
 	featureFlagsChats, err := m.ent.TelegramChatFeatureFlags.
 		Query().
 		Where(
@@ -158,22 +220,48 @@ func (m *Model) ListChatHistoriesRecapEnabledChats() ([]*ent.TelegramChatFeature
 }
 
 func (m *Model) QueueSendChatHistoriesRecapTask() {
-	chats, err := m.ListChatHistoriesRecapEnabledChats()
+	chats, err := m.ListChatHistoriesRecapEnabledChatsForGroups()
 	if err != nil {
 		m.logger.Error("failed to list chat histories recap enabled chats", zap.Error(err))
 		return
 	}
 
+	mChatOptions := make(map[int64]*ent.TelegramChatRecapsOptions)
+
 	for _, chat := range chats {
-		err = m.QueueOneSendChatHistoriesRecapTaskForChatID(chat.ChatID)
+		options, err := m.FindOneOrCreateRecapsOption(chat.ChatID)
 		if err != nil {
-			m.logger.Error("failed to queue send chat histories recap task", zap.Error(err))
+			m.logger.Error("failed to find one or create recaps option",
+				zap.Int64("chat_id", chat.ChatID),
+				zap.Error(err),
+			)
+
+			continue
+		}
+
+		mChatOptions[chat.ChatID] = options
+	}
+
+	for _, chat := range chats {
+		options, ok := mChatOptions[chat.ChatID]
+		if !ok {
+			continue
+		}
+
+		err := m.QueueOneSendChatHistoriesRecapTaskForChatID(chat.ChatID, options)
+		if err != nil {
 			continue
 		}
 	}
 }
 
-func (m *Model) QueueOneSendChatHistoriesRecapTaskForChatID(chatID int64) error {
+var MapScheduleHours = map[int][]int64{
+	2: {8, 20},        // queue for 08:00, 20:00
+	3: {0, 8, 16},     // queue for 00:00, 08:00, 16:00
+	4: {2, 8, 14, 20}, // queue for 02:00, 08:00, 14:00, 20:00
+}
+
+func (m *Model) newNextScheduleTimeForChatHistoriesRecapTasksForChatID(_ int64, rate int) time.Time {
 	location := time.UTC
 	if m.config.TimezoneShiftSeconds != 0 {
 		location = time.FixedZone("Local", int(m.config.TimezoneShiftSeconds))
@@ -184,32 +272,74 @@ func (m *Model) QueueOneSendChatHistoriesRecapTaskForChatID(chatID int64) error 
 		UTC().       // Resets to UTC.
 		In(location) // Align current timezone with the configured offset (if any) for later calculation.
 
-	scheduleTargets := []int64{2, 8, 14, 20} // queue for 02:00, 08:00, 14:00, 20:00
-	scheduleSets := make([]time.Time, 0, len(scheduleTargets))
+	scheduleTargets, ok := MapScheduleHours[rate]
+	if !ok {
+		scheduleTargets = MapScheduleHours[4]
+	}
+
+	var nextScheduleTimeSet bool
+	var nextScheduleTime time.Time
 
 	for _, target := range scheduleTargets {
 		if now.Hour() < int(target) {
-			scheduleSets = append(scheduleSets, time.Date(now.Year(), now.Month(), now.Day(), int(target), 0, 0, 0, location))
+			nextScheduleTime = time.Date(now.Year(), now.Month(), now.Day(), int(target), 0, 0, 0, location)
+			nextScheduleTimeSet = true
+
 			break
 		}
 	}
-	if len(scheduleSets) == 0 {
-		scheduleSets = append(scheduleSets, time.Date(now.Year(), now.Month(), now.Day()+1, int(scheduleTargets[0]), 0, 0, 0, location))
+
+	if !nextScheduleTimeSet {
+		nextScheduleTime = time.Date(now.Year(), now.Month(), now.Day()+1, int(scheduleTargets[0]), 0, 0, 0, location)
 	}
 
-	for _, schedule := range scheduleSets {
-		m.logger.Info("scheduled one send chat histories recap task for chat", zap.Int64("chat_id", chatID), zap.Time("schedule", schedule))
+	return nextScheduleTime
+}
 
-		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+func (m *Model) queueOneSendChatHistoriesRecapTaskForChatIDBasedOnScheduleSets(chatID int64, nextScheduleTime time.Time) error {
+	m.logger.Info("scheduled one send chat histories recap task for chat",
+		zap.Int64("chat_id", chatID),
+		zap.Time("schedule", nextScheduleTime),
+	)
 
-		err := m.digger.BuryUtil(ctx, timecapsules.AutoRecapCapsule{
-			ChatID: chatID,
-		}, schedule.UnixMilli())
-		if err != nil {
-			m.logger.Error("failed to bury one send chat histories recap task for chat", zap.Int64("chat_id", chatID), zap.Error(err))
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 
-		cancel()
+	err := m.digger.BuryUtil(ctx, timecapsules.AutoRecapCapsule{
+		ChatID: chatID,
+	}, nextScheduleTime.UnixMilli())
+	if err != nil {
+		m.logger.Error("failed to bury one send chat histories recap task for chat",
+			zap.Int64("chat_id", chatID),
+			zap.Time("schedule", nextScheduleTime),
+			zap.Error(err),
+		)
+	}
+
+	return nil
+}
+
+func (m *Model) QueueOneSendChatHistoriesRecapTaskForChatID(chatID int64, options *ent.TelegramChatRecapsOptions) error {
+	if !lo.Contains([]int{2, 3, 4}, options.AutoRecapRatesPerDay) {
+		m.logger.Error("invalid auto recap rates per day, fallbacks, to 4 times a day",
+			zap.Int64("chat_id", chatID),
+			zap.Int("auto_recap_rates", options.AutoRecapRatesPerDay),
+		)
+
+		options.AutoRecapRatesPerDay = 4
+	}
+
+	nextScheduleTime := m.newNextScheduleTimeForChatHistoriesRecapTasksForChatID(chatID, options.AutoRecapRatesPerDay)
+
+	err := m.queueOneSendChatHistoriesRecapTaskForChatIDBasedOnScheduleSets(chatID, nextScheduleTime)
+	if err != nil {
+		m.logger.Error("failed to queue send chat histories recap task",
+			zap.Int64("chat_id", chatID),
+			zap.Int("auto_recap_rates", options.AutoRecapRatesPerDay),
+			zap.Error(err),
+		)
+
+		return err
 	}
 
 	return nil

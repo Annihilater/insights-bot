@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/joho/godotenv"
+	"github.com/nekomeowww/xo"
 	"github.com/samber/lo"
 	goopenai "github.com/sashabaranov/go-openai"
 )
@@ -14,8 +15,8 @@ import (
 const (
 	EnvTimezoneShiftSeconds = "TIMEZONE_SHIFT_SECONDS"
 
-	EnvTelegramBotToken       = "TELEGRAM_BOT_TOKEN" //nolint:gosec
-	EnvTelegramBotWebhookURL  = "TELEGRAM_BOT_WEBHOOK_URL"
+	EnvTelegramBotToken       = "TELEGRAM_BOT_TOKEN"       //nolint:gosec
+	EnvTelegramBotWebhookURL  = "TELEGRAM_BOT_WEBHOOK_URL" //nolint:gosec
 	EnvTelegramBotWebhookPort = "TELEGRAM_BOT_WEBHOOK_PORT"
 	EnvTelegramBotAPIEndpoint = "TELEGRAM_BOT_API_ENDPOINT"
 
@@ -27,9 +28,11 @@ const (
 	EnvDiscordBotPublicKey   = "DISCORD_BOT_PUBLIC_KEY"
 	EnvDiscordBotWebhookPort = "DISCORD_BOT_WEBHOOK_PORT"
 
-	EnvOpenAIAPISecret    = "OPENAI_API_SECRET" //nolint:gosec
-	EnvOpenAIAPIHost      = "OPENAI_API_HOST"
-	EnvOpenAIAPIModelName = "OPENAI_API_MODEL_NAME"
+	EnvOpenAIAPISecret                       = "OPENAI_API_SECRET" //nolint:gosec
+	EnvOpenAIAPIHost                         = "OPENAI_API_HOST"
+	EnvOpenAIAPIModelName                    = "OPENAI_API_MODEL_NAME"
+	EnvOpenAIAPITokenLimit                   = "OPENAI_API_TOKEN_LIMIT"                      //nolint:gosec
+	EnvOpenAIAPIChatHistoriesRecapTokenLimit = "OPENAI_API_CHAT_HISTORIES_RECAP_TOKEN_LIMIT" //nolint:gosec
 
 	EnvPineconeProjectName          = "PINECONE_PROJECT_NAME"
 	EnvPineconeEnvironment          = "PINECONE_ENVIRONMENT"
@@ -51,6 +54,8 @@ const (
 
 	EnvHardLimitManualRecapRatePerSeconds      = "HARD_LIMIT_MANUAL_RECAP_RATE_PER_SECONDS"
 	EnvHardLimitSummarizeWebpageRatePerSeconds = "HARD_LIMIT_SMR_WEBPAGE_RATE_PER_SECONDS"
+
+	EnvLocalesDir = "LOCALES_DIR"
 )
 
 type SectionPineconeIndexes struct {
@@ -103,9 +108,11 @@ type SectionHardLimit struct {
 }
 
 type SectionOpenAI struct {
-	Secret    string
-	Host      string
-	ModelName string
+	Secret                       string
+	Host                         string
+	ModelName                    string
+	TokenLimit                   int64
+	ChatHistoriesRecapTokenLimit int64
 }
 
 type Config struct {
@@ -121,6 +128,7 @@ type Config struct {
 	LogLevel             string
 	LogFilePath          string
 	HardLimit            SectionHardLimit
+	LocalesDir           string
 }
 
 func NewConfig() func() (*Config, error) {
@@ -170,6 +178,31 @@ func NewConfig() func() (*Config, error) {
 			log.Printf("%s value %v is less than 0, fallbacks to 0", EnvHardLimitSummarizeWebpageRatePerSeconds, getEnv(EnvHardLimitSummarizeWebpageRatePerSeconds))
 		}
 
+		tokenLimit, tokenLimitParseErr := strconv.ParseInt(getEnv(EnvOpenAIAPITokenLimit), 10, 64)
+		if tokenLimitParseErr != nil {
+			log.Printf("failed to parse %s %v: %v, should be number", EnvOpenAIAPITokenLimit, getEnv(EnvOpenAIAPITokenLimit), tokenLimitParseErr)
+		}
+		if tokenLimit <= 0 {
+			tokenLimit = 4096
+
+			log.Printf("%s value %v is less than or equal to 0, fallbacks to 4096", EnvOpenAIAPITokenLimit, getEnv(EnvOpenAIAPITokenLimit))
+		}
+
+		chatHistoriesRecapTokenLimit, chatHistoriesRecapTokenLimitParseErr := strconv.ParseInt(getEnv(EnvOpenAIAPIChatHistoriesRecapTokenLimit), 10, 64)
+		if chatHistoriesRecapTokenLimitParseErr != nil {
+			log.Printf("failed to parse %s %v: %v, should be number", EnvOpenAIAPIChatHistoriesRecapTokenLimit, getEnv(EnvOpenAIAPIChatHistoriesRecapTokenLimit), chatHistoriesRecapTokenLimitParseErr)
+		}
+		if chatHistoriesRecapTokenLimit <= 0 {
+			chatHistoriesRecapTokenLimit = 2000
+
+			log.Printf("%s value %v is less than or equal to 0, fallbacks to 2000", EnvOpenAIAPIChatHistoriesRecapTokenLimit, getEnv(EnvOpenAIAPIChatHistoriesRecapTokenLimit))
+		}
+		if chatHistoriesRecapTokenLimit > tokenLimit {
+			chatHistoriesRecapTokenLimit = tokenLimit
+
+			log.Printf("%s value %v is greater than token limit, fallbacks to %v", EnvOpenAIAPIChatHistoriesRecapTokenLimit, getEnv(EnvOpenAIAPIChatHistoriesRecapTokenLimit), tokenLimit)
+		}
+
 		return &Config{
 			TimezoneShiftSeconds: lo.Ternary(timezoneShiftSecondsParseErr == nil, lo.Ternary(timezoneShiftSeconds != 0, timezoneShiftSeconds, 0), 0),
 			Telegram: SectionTelegram{
@@ -184,9 +217,11 @@ func NewConfig() func() (*Config, error) {
 				ClientSecret: getEnv(EnvSlackClientSecret),
 			},
 			OpenAI: SectionOpenAI{
-				Secret:    getEnv(EnvOpenAIAPISecret),
-				Host:      getEnv(EnvOpenAIAPIHost),
-				ModelName: lo.Ternary(getEnv(EnvOpenAIAPIModelName) == "", goopenai.GPT3Dot5Turbo, getEnv(EnvOpenAIAPIModelName)),
+				Secret:                       getEnv(EnvOpenAIAPISecret),
+				Host:                         getEnv(EnvOpenAIAPIHost),
+				ModelName:                    lo.Ternary(getEnv(EnvOpenAIAPIModelName) == "", goopenai.GPT3Dot5Turbo, getEnv(EnvOpenAIAPIModelName)),
+				TokenLimit:                   lo.Ternary(tokenLimitParseErr == nil, lo.Ternary(tokenLimit != 0, tokenLimit, 4096), 4096),
+				ChatHistoriesRecapTokenLimit: lo.Ternary(chatHistoriesRecapTokenLimitParseErr == nil, lo.Ternary(chatHistoriesRecapTokenLimit != 0, chatHistoriesRecapTokenLimit, 2000), 2000),
 			},
 			Pinecone: SectionPinecone{
 				ProjectName: getEnv(EnvPineconeProjectName),
@@ -219,6 +254,7 @@ func NewConfig() func() (*Config, error) {
 				ManualRecapRatePerSeconds:      manualRecapRatePerSecondsHardLimit,
 				SummarizeWebpageRatePerSeconds: summarizeWebpageRatePerSecondsHardLimit,
 			},
+			LocalesDir: getEnv(EnvLocalesDir),
 		}, nil
 	}
 }
@@ -239,7 +275,8 @@ func NewTestConfig() func() *Config {
 				TLSEnabled:         false,
 				ClientCacheEnabled: false,
 			},
-			LogLevel: "debug",
+			LogLevel:   "debug",
+			LocalesDir: xo.RelativePathOf("../locales"),
 		}
 	}
 }

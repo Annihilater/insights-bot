@@ -89,6 +89,9 @@ func (m *Model) summarizeChatHistoriesSlice(chatID int64, s string) ([]*openai.C
 	}
 
 	var outputs []*openai.ChatHistorySummarizationOutputs
+	resp.Choices[0].Message.Content = strings.TrimPrefix(resp.Choices[0].Message.Content, "```json")
+	resp.Choices[0].Message.Content = strings.TrimPrefix(resp.Choices[0].Message.Content, "```")
+	resp.Choices[0].Message.Content = strings.TrimSuffix(resp.Choices[0].Message.Content, "```")
 
 	err = json.Unmarshal([]byte(resp.Choices[0].Message.Content), &outputs)
 	if err != nil {
@@ -109,13 +112,13 @@ func (m *Model) summarizeChatHistoriesSlice(chatID int64, s string) ([]*openai.C
 	return outputs, resp.Usage, nil
 }
 
-func filterOutInvalidFields(messageIDs []int64, outputs []*openai.ChatHistorySummarizationOutputs) []*openai.ChatHistorySummarizationOutputs {
-	for i := range outputs {
+func filterOutInvalidFields(messageIDs []int64) func(output *openai.ChatHistorySummarizationOutputs, _ int) *openai.ChatHistorySummarizationOutputs {
+	return func(output *openai.ChatHistorySummarizationOutputs, _ int) *openai.ChatHistorySummarizationOutputs {
 		// limit key ids to 5
-		outputs[i].Participants = lo.Uniq(outputs[i].Participants)
+		output.Participants = lo.Uniq(output.Participants)
 
 		// filter out non-exist message ids
-		for _, d := range outputs[i].Discussion {
+		for _, d := range output.Discussion {
 			d.KeyIDs = lo.Filter(d.KeyIDs, func(item int64, _ int) bool {
 				return lo.Contains(messageIDs, item) && item != 0
 			})
@@ -128,12 +131,12 @@ func filterOutInvalidFields(messageIDs []int64, outputs []*openai.ChatHistorySum
 			}
 		}
 
-		outputs[i].Discussion = lo.Filter(outputs[i].Discussion, func(item *openai.ChatHistorySummarizationOutputsDiscussion, _ int) bool {
+		output.Discussion = lo.Filter(output.Discussion, func(item *openai.ChatHistorySummarizationOutputsDiscussion, _ int) bool {
 			return len(item.KeyIDs) > 0 && item.Point != ""
 		})
-	}
 
-	return outputs
+		return output
+	}
 }
 
 func filterOutInvalidOutputFilterFunc(output *openai.ChatHistorySummarizationOutputs, _ int) bool {
@@ -144,8 +147,17 @@ func filterOutInvalidOutputFilterFunc(output *openai.ChatHistorySummarizationOut
 		len(output.Discussion) > 0 // filter out empty discussion
 }
 
+func filterOutMention(output *openai.ChatHistorySummarizationOutputs, _ int) *openai.ChatHistorySummarizationOutputs {
+	output.Participants = lo.Map(output.Participants, func(item string, _ int) string {
+		return strings.TrimPrefix(item, "@")
+	})
+
+	return output
+}
+
 func (m *Model) summarizeChatHistories(chatID int64, messageIDs []int64, llmFriendlyChatHistories string) ([]*openai.ChatHistorySummarizationOutputs, goopenai.Usage, error) {
-	chatHistoriesSlices := m.openAI.SplitContentBasedByTokenLimitations(llmFriendlyChatHistories, 15000)
+	tokenLimit := m.config.OpenAI.TokenLimit - m.config.OpenAI.ChatHistoriesRecapTokenLimit
+	chatHistoriesSlices := m.openAI.SplitContentBasedByTokenLimitations(llmFriendlyChatHistories, int(tokenLimit))
 	chatHistoriesSummarizations := make([]*openai.ChatHistorySummarizationOutputs, 0, len(chatHistoriesSlices))
 
 	var statusUsage goopenai.Usage
@@ -153,7 +165,7 @@ func (m *Model) summarizeChatHistories(chatID int64, messageIDs []int64, llmFrie
 	for _, s := range chatHistoriesSlices {
 		var outputs []*openai.ChatHistorySummarizationOutputs
 
-		_, _, err := lo.AttemptWithDelay(3, time.Second, func(tried int, delay time.Duration) error {
+		_, _, err := lo.AttemptWithDelay(5, time.Second, func(tried int, delay time.Duration) error {
 			o, usage, err := m.summarizeChatHistoriesSlice(chatID, s)
 			statusUsage.CompletionTokens += usage.CompletionTokens
 			statusUsage.PromptTokens += usage.PromptTokens
@@ -163,25 +175,35 @@ func (m *Model) summarizeChatHistories(chatID int64, messageIDs []int64, llmFrie
 				m.logger.Error(fmt.Sprintf("failed to summarize chat histories slice: %s, tried %d...", s, tried),
 					zap.Int64("chat_id", chatID),
 					zap.String("model_name", m.openAI.GetModelName()),
+					zap.Int64("configured_chat_histories_recap_token_limit", m.config.OpenAI.ChatHistoriesRecapTokenLimit),
+					zap.Int64("configured_token_limit", m.config.OpenAI.TokenLimit),
+					zap.Int64("calculated_token_limit", tokenLimit),
 				)
+
 				return err
 			}
 
 			// filter out invalid fields
-			o = filterOutInvalidFields(messageIDs, o)
+			o = lo.Map(o, filterOutInvalidFields(messageIDs))
 			// filter out empty outputs
 			o = lo.Filter(o, filterOutInvalidOutputFilterFunc)
+			// filter out mentions
+			o = lo.Map(o, filterOutMention)
 
 			if len(o) == 0 {
 				m.logger.Error(fmt.Sprintf("no valid outputs from chat histories slice: %s, tried %d...", s, tried),
 					zap.Int64("chat_id", chatID),
 					zap.String("model_name", m.openAI.GetModelName()),
+					zap.Int64("configured_chat_histories_recap_token_limit", m.config.OpenAI.ChatHistoriesRecapTokenLimit),
+					zap.Int64("configured_token_limit", m.config.OpenAI.TokenLimit),
+					zap.Int64("calculated_token_limit", tokenLimit),
 				)
 
 				return errors.New("no valid outputs")
 			}
 
 			outputs = o
+
 			return nil
 		})
 		if err != nil {

@@ -26,6 +26,7 @@ import (
 	"github.com/nekomeowww/insights-bot/pkg/linkprev"
 	"github.com/nekomeowww/insights-bot/pkg/logger"
 	"github.com/nekomeowww/insights-bot/pkg/types/bot"
+	"github.com/nekomeowww/xo"
 )
 
 type NewModelParams struct {
@@ -95,7 +96,7 @@ func (m *Model) SummarizeInputURL(ctx context.Context, url string, fromPlatform 
 		return nil, fmt.Errorf("failed to parse %s, %w", url, err)
 	}
 
-	textContent := m.openai.TruncateContentBasedOnTokens(article.TextContent, 14000)
+	textContent := m.openai.TruncateContentBasedOnTokens(article.TextContent, int(m.config.OpenAI.TokenLimit)-1200)
 
 	m.logger.Info("✍️ summarizing article...", zap.String("title", article.Title), zap.String("url", url))
 
@@ -167,23 +168,47 @@ func (m *Model) extractContentFromURL(ctx context.Context, urlString string) (*r
 		}, nil
 	}
 
-	resp, err := m.req.
+	dumpBuffer := new(bytes.Buffer)
+	defer func() {
+		dumpBuffer.Reset()
+		dumpBuffer = nil
+	}()
+
+	request := m.req.
 		R().
-		EnableDump().
-		SetContext(ctx).
-		Get(parsedURL.String())
+		EnableDumpTo(dumpBuffer).
+		DisableAutoReadResponse().
+		SetContext(ctx)
+	defer func() {
+		request.EnableDumpTo(xo.NewNopIoWriter())
+	}()
+
+	resp, err := request.Get(parsedURL.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get url %s, %w: %v", parsedURL.String(), ErrNetworkError, err)
 	}
 	if !resp.IsSuccessState() {
-		return nil, fmt.Errorf("failed to get url %s, %w, status code: %d, dump: %s", parsedURL.String(), ErrRequestFailed, resp.StatusCode, resp.Dump())
+		errorBuf := new(bytes.Buffer)
+		defer errorBuf.Reset()
+
+		_, err = io.Copy(errorBuf, resp.Body)
+		if err != nil {
+			fmt.Fprintf(errorBuf, "failed to read response body: %v", err)
+		}
+
+		dumpBuffer.WriteString("\n")
+		dumpBuffer.Write(errorBuf.Bytes())
+
+		return nil, fmt.Errorf("failed to get url %s, %w, status code: %d, dump: %s", parsedURL.String(), ErrRequestFailed, resp.StatusCode, dumpBuffer.String())
 	}
 	if !strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
 		return nil, fmt.Errorf("url fetched, but content-type not supported yet, %w, content-type: %s", ErrContentNotSupported, resp.Header.Get("Content-Type"))
 	}
 
 	defer resp.Body.Close()
+
 	buffer := new(bytes.Buffer)
+	defer buffer.Reset()
 
 	_, err = io.Copy(buffer, resp.Body)
 	if err != nil {

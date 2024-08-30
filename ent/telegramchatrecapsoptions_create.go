@@ -54,6 +54,34 @@ func (tcroc *TelegramChatRecapsOptionsCreate) SetNillableManualRecapRatePerSecon
 	return tcroc
 }
 
+// SetAutoRecapRatesPerDay sets the "auto_recap_rates_per_day" field.
+func (tcroc *TelegramChatRecapsOptionsCreate) SetAutoRecapRatesPerDay(i int) *TelegramChatRecapsOptionsCreate {
+	tcroc.mutation.SetAutoRecapRatesPerDay(i)
+	return tcroc
+}
+
+// SetNillableAutoRecapRatesPerDay sets the "auto_recap_rates_per_day" field if the given value is not nil.
+func (tcroc *TelegramChatRecapsOptionsCreate) SetNillableAutoRecapRatesPerDay(i *int) *TelegramChatRecapsOptionsCreate {
+	if i != nil {
+		tcroc.SetAutoRecapRatesPerDay(*i)
+	}
+	return tcroc
+}
+
+// SetPinAutoRecapMessage sets the "pin_auto_recap_message" field.
+func (tcroc *TelegramChatRecapsOptionsCreate) SetPinAutoRecapMessage(b bool) *TelegramChatRecapsOptionsCreate {
+	tcroc.mutation.SetPinAutoRecapMessage(b)
+	return tcroc
+}
+
+// SetNillablePinAutoRecapMessage sets the "pin_auto_recap_message" field if the given value is not nil.
+func (tcroc *TelegramChatRecapsOptionsCreate) SetNillablePinAutoRecapMessage(b *bool) *TelegramChatRecapsOptionsCreate {
+	if b != nil {
+		tcroc.SetPinAutoRecapMessage(*b)
+	}
+	return tcroc
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (tcroc *TelegramChatRecapsOptionsCreate) SetCreatedAt(i int64) *TelegramChatRecapsOptionsCreate {
 	tcroc.mutation.SetCreatedAt(i)
@@ -139,6 +167,14 @@ func (tcroc *TelegramChatRecapsOptionsCreate) defaults() {
 		v := telegramchatrecapsoptions.DefaultManualRecapRatePerSeconds
 		tcroc.mutation.SetManualRecapRatePerSeconds(v)
 	}
+	if _, ok := tcroc.mutation.AutoRecapRatesPerDay(); !ok {
+		v := telegramchatrecapsoptions.DefaultAutoRecapRatesPerDay
+		tcroc.mutation.SetAutoRecapRatesPerDay(v)
+	}
+	if _, ok := tcroc.mutation.PinAutoRecapMessage(); !ok {
+		v := telegramchatrecapsoptions.DefaultPinAutoRecapMessage
+		tcroc.mutation.SetPinAutoRecapMessage(v)
+	}
 	if _, ok := tcroc.mutation.CreatedAt(); !ok {
 		v := telegramchatrecapsoptions.DefaultCreatedAt()
 		tcroc.mutation.SetCreatedAt(v)
@@ -163,6 +199,12 @@ func (tcroc *TelegramChatRecapsOptionsCreate) check() error {
 	}
 	if _, ok := tcroc.mutation.ManualRecapRatePerSeconds(); !ok {
 		return &ValidationError{Name: "manual_recap_rate_per_seconds", err: errors.New(`ent: missing required field "TelegramChatRecapsOptions.manual_recap_rate_per_seconds"`)}
+	}
+	if _, ok := tcroc.mutation.AutoRecapRatesPerDay(); !ok {
+		return &ValidationError{Name: "auto_recap_rates_per_day", err: errors.New(`ent: missing required field "TelegramChatRecapsOptions.auto_recap_rates_per_day"`)}
+	}
+	if _, ok := tcroc.mutation.PinAutoRecapMessage(); !ok {
+		return &ValidationError{Name: "pin_auto_recap_message", err: errors.New(`ent: missing required field "TelegramChatRecapsOptions.pin_auto_recap_message"`)}
 	}
 	if _, ok := tcroc.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "TelegramChatRecapsOptions.created_at"`)}
@@ -218,6 +260,14 @@ func (tcroc *TelegramChatRecapsOptionsCreate) createSpec() (*TelegramChatRecapsO
 		_spec.SetField(telegramchatrecapsoptions.FieldManualRecapRatePerSeconds, field.TypeInt64, value)
 		_node.ManualRecapRatePerSeconds = value
 	}
+	if value, ok := tcroc.mutation.AutoRecapRatesPerDay(); ok {
+		_spec.SetField(telegramchatrecapsoptions.FieldAutoRecapRatesPerDay, field.TypeInt, value)
+		_node.AutoRecapRatesPerDay = value
+	}
+	if value, ok := tcroc.mutation.PinAutoRecapMessage(); ok {
+		_spec.SetField(telegramchatrecapsoptions.FieldPinAutoRecapMessage, field.TypeBool, value)
+		_node.PinAutoRecapMessage = value
+	}
 	if value, ok := tcroc.mutation.CreatedAt(); ok {
 		_spec.SetField(telegramchatrecapsoptions.FieldCreatedAt, field.TypeInt64, value)
 		_node.CreatedAt = value
@@ -232,11 +282,15 @@ func (tcroc *TelegramChatRecapsOptionsCreate) createSpec() (*TelegramChatRecapsO
 // TelegramChatRecapsOptionsCreateBulk is the builder for creating many TelegramChatRecapsOptions entities in bulk.
 type TelegramChatRecapsOptionsCreateBulk struct {
 	config
+	err      error
 	builders []*TelegramChatRecapsOptionsCreate
 }
 
 // Save creates the TelegramChatRecapsOptions entities in the database.
 func (tcrocb *TelegramChatRecapsOptionsCreateBulk) Save(ctx context.Context) ([]*TelegramChatRecapsOptions, error) {
+	if tcrocb.err != nil {
+		return nil, tcrocb.err
+	}
 	specs := make([]*sqlgraph.CreateSpec, len(tcrocb.builders))
 	nodes := make([]*TelegramChatRecapsOptions, len(tcrocb.builders))
 	mutators := make([]Mutator, len(tcrocb.builders))

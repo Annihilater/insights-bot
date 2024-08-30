@@ -12,12 +12,14 @@ import (
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 
+	"github.com/nekomeowww/insights-bot/pkg/i18n"
 	"github.com/nekomeowww/insights-bot/pkg/logger"
 	"github.com/nekomeowww/insights-bot/pkg/types/telegram"
 )
 
 type Dispatcher struct {
 	Logger *logger.Logger
+	I18n   *i18n.I18n
 
 	helpCommand                *helpCommandHandler
 	cancelCommand              *cancelCommandHandler
@@ -33,10 +35,11 @@ type Dispatcher struct {
 	chatMigrationFromHandlers  []Handler
 }
 
-func NewDispatcher() func(logger *logger.Logger) *Dispatcher {
-	return func(logger *logger.Logger) *Dispatcher {
+func NewDispatcher() func(logger *logger.Logger, i18n *i18n.I18n) *Dispatcher {
+	return func(logger *logger.Logger, i18n *i18n.I18n) *Dispatcher {
 		d := &Dispatcher{
 			Logger:                     logger,
+			I18n:                       i18n,
 			helpCommand:                newHelpCommandHandler(),
 			cancelCommand:              newCancelCommandHandler(),
 			startCommandHandler:        newStartCommandHandler(),
@@ -53,11 +56,16 @@ func NewDispatcher() func(logger *logger.Logger) *Dispatcher {
 
 		d.startCommandHandler.helpCommandHandler = d.helpCommand
 
-		d.OnCommandGroup("基础命令", []Command{
-			{Command: d.helpCommand.Command(), HelpMessage: d.helpCommand.CommandHelp(), Handler: NewHandler(d.helpCommand.handle)},
-			{Command: d.cancelCommand.Command(), HelpMessage: d.cancelCommand.CommandHelp(), Handler: NewHandler(d.cancelCommand.handle)},
-			{Command: d.startCommandHandler.Command(), HelpMessage: d.startCommandHandler.CommandHelp(), Handler: NewHandler(d.startCommandHandler.handle)},
+		d.OnCommandGroup(func(c *Context) string {
+			return c.T("system.commands.groups.basic.name")
+		}, []Command{
+			{Command: d.helpCommand.Command(), HelpMessage: d.helpCommand.CommandHelp, Handler: NewHandler(d.helpCommand.handle)},
+			{Command: d.cancelCommand.Command(), HelpMessage: d.cancelCommand.CommandHelp, Handler: NewHandler(d.cancelCommand.handle)},
+			{Command: d.startCommandHandler.Command(), HelpMessage: d.startCommandHandler.CommandHelp, Handler: NewHandler(d.startCommandHandler.handle)},
 		})
+		d.OnCallbackQuery("nop", NewHandler(func(ctx *Context) (Response, error) {
+			return nil, nil
+		}))
 
 		return d
 	}
@@ -67,7 +75,7 @@ func (d *Dispatcher) Use(middleware MiddlewareFunc) {
 	d.middlewares = append(d.middlewares, middleware)
 }
 
-func (d *Dispatcher) OnCommand(cmd, commandHelp string, h Handler) {
+func (d *Dispatcher) OnCommand(cmd string, commandHelp func(c *Context) string, h Handler) {
 	d.helpCommand.defaultGroup.commands = append(d.helpCommand.defaultGroup.commands, Command{
 		Command:     cmd,
 		HelpMessage: commandHelp,
@@ -76,7 +84,7 @@ func (d *Dispatcher) OnCommand(cmd, commandHelp string, h Handler) {
 	d.commandHandlers[cmd] = h.Handle
 }
 
-func (d *Dispatcher) OnCommandGroup(groupName string, group []Command) {
+func (d *Dispatcher) OnCommandGroup(groupName func(*Context) string, group []Command) {
 	d.helpCommand.commandGroups = append(d.helpCommand.commandGroups, commandGroup{name: groupName, commands: group})
 
 	for _, c := range group {
@@ -172,7 +180,7 @@ func (d *Dispatcher) dispatchCallbackQuery(c *Context) {
 				strings.Join(identityStrings, " "),
 				color.FgYellow.Render(c.Update.CallbackQuery.From.ID),
 				c.Update.CallbackData(),
-				color.FgRed.Render("无法调度 Callback Query，监测到缺少路由。"),
+				color.FgRed.Render("无法调度 Callback Query，检测到缺少路由。"),
 				color.FgRed.Render("Unable to dispatch Callback Query due to missing route DETECTED."),
 				color.FgRed.Render("大多数情况下，发生这种情况的原因是相应的处理程序没有通过 OnCallbackQuery(...) 方法正确注册，或者内部派发器未能与之匹配，请检查已注册的处理程序及其路由，然后再试一次。"),
 				color.FgRed.Render("For most of the time, this happens when the corresponding handler wasn't registered properly through OnCallbackQuery(...) method or internal dispatcher failed to match it, please check registered handlers and the route of them and then try again."),
@@ -392,10 +400,10 @@ func (d *Dispatcher) dispatchChatMigrationTo(c *Context) {
 
 func (d *Dispatcher) Dispatch(bot *tgbotapi.BotAPI, update tgbotapi.Update, rueidisClient rueidis.Client) {
 	for _, m := range d.middlewares {
-		m(NewContext(bot, update, d.Logger, rueidisClient), func() {})
+		m(NewContext(bot, update, d.Logger, d.I18n, rueidisClient), func() {})
 	}
 
-	ctx := NewContext(bot, update, d.Logger, rueidisClient)
+	ctx := NewContext(bot, update, d.Logger, d.I18n, rueidisClient)
 	switch ctx.UpdateType() {
 	case UpdateTypeMessage:
 		d.dispatchMessage(ctx)

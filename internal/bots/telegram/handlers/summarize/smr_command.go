@@ -1,23 +1,29 @@
 package summarize
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/nekomeowww/insights-bot/internal/services/smr"
-	"github.com/nekomeowww/insights-bot/pkg/bots/tgbot"
-	"github.com/nekomeowww/insights-bot/pkg/types/bot"
-	types "github.com/nekomeowww/insights-bot/pkg/types/smr"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
+
+	"github.com/nekomeowww/insights-bot/internal/services/smr"
+	"github.com/nekomeowww/insights-bot/pkg/bots/tgbot"
+	"github.com/nekomeowww/insights-bot/pkg/i18n"
+	"github.com/nekomeowww/insights-bot/pkg/types/bot"
+	types "github.com/nekomeowww/insights-bot/pkg/types/smr"
 )
 
 func (h *Handlers) Handle(c *tgbot.Context) (tgbot.Response, error) {
 	urlString := c.Update.Message.CommandArguments()
 	if urlString == "" && c.Update.Message.ReplyToMessage != nil && c.Update.Message.ReplyToMessage.Text != "" {
 		urlString = c.Update.Message.ReplyToMessage.Text
+	}
+	if urlString == "" {
+		return nil, tgbot.
+			NewMessageError(c.T("commands.groups.summarization.commands.smr.noLinksFound.telegram")).
+			WithReply(c.Update.Message)
 	}
 
 	urlString = strings.TrimSpace(urlString)
@@ -29,7 +35,7 @@ func (h *Handlers) Handle(c *tgbot.Context) (tgbot.Response, error) {
 	if err != nil {
 		if smr.IsUrlCheckError(err) {
 			return nil, tgbot.
-				NewMessageError(smr.FormatUrlCheckError(err, bot.FromPlatformTelegram)).
+				NewMessageError(smr.FormatUrlCheckError(err, bot.FromPlatformTelegram, c.Language(), h.i18n)).
 				WithReply(c.Update.Message).
 				WithParseModeHTML()
 		}
@@ -37,7 +43,7 @@ func (h *Handlers) Handle(c *tgbot.Context) (tgbot.Response, error) {
 		return nil, tgbot.NewExceptionError(originErr).WithReply(c.Update.Message)
 	}
 
-	message := tgbotapi.NewMessage(c.Update.Message.Chat.ID, "请稍等，量子速读中...")
+	message := tgbotapi.NewMessage(c.Update.Message.Chat.ID, c.T("commands.groups.summarization.commands.smr.reading"))
 	message.ReplyToMessageID = c.Update.Message.MessageID
 
 	processingMessage, err := c.Bot.Send(message)
@@ -54,7 +60,10 @@ func (h *Handlers) Handle(c *tgbot.Context) (tgbot.Response, error) {
 	}
 	if !ok {
 		return nil, tgbot.
-			NewMessageError(fmt.Sprintf("很抱歉，您的操作触发了我们的限制机制，为了保证系统的可用性，本命令每最多 %d 分钟最多使用一次，请您耐心等待 %d 分钟后再试，感谢您的理解和支持。", perSeconds, lo.Ternary(ttl/time.Minute <= 1, 1, ttl/time.Minute))).
+			NewMessageError(c.T("", i18n.M{
+				"Seconds":           perSeconds,
+				"SecondsToBeWaited": lo.Ternary(ttl/time.Minute <= 1, 1, ttl/time.Minute),
+			})).
 			WithReply(c.Update.Message)
 	}
 
@@ -63,9 +72,13 @@ func (h *Handlers) Handle(c *tgbot.Context) (tgbot.Response, error) {
 		URL:       urlString,
 		ChatID:    c.Update.Message.Chat.ID,
 		MessageID: processingMessage.MessageID,
+		Language:  c.Language(),
 	})
 	if err != nil {
-		return nil, tgbot.NewExceptionError(err).WithMessage("量子速读失败了，可以再试试？").WithEdit(&processingMessage)
+		return nil, tgbot.
+			NewExceptionError(err).
+			WithMessage(c.T("commands.groups.summarization.commands.smr.failedToRead")).
+			WithEdit(&processingMessage)
 	}
 
 	return nil, nil

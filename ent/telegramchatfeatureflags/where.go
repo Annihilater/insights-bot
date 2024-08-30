@@ -73,6 +73,11 @@ func FeatureChatHistoriesRecap(v bool) predicate.TelegramChatFeatureFlags {
 	return predicate.TelegramChatFeatureFlags(sql.FieldEQ(FieldFeatureChatHistoriesRecap, v))
 }
 
+// FeatureLanguage applies equality check predicate on the "feature_language" field. It's identical to FeatureLanguageEQ.
+func FeatureLanguage(v string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldEQ(FieldFeatureLanguage, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v int64) predicate.TelegramChatFeatureFlags {
 	return predicate.TelegramChatFeatureFlags(sql.FieldEQ(FieldCreatedAt, v))
@@ -263,6 +268,71 @@ func FeatureChatHistoriesRecapNEQ(v bool) predicate.TelegramChatFeatureFlags {
 	return predicate.TelegramChatFeatureFlags(sql.FieldNEQ(FieldFeatureChatHistoriesRecap, v))
 }
 
+// FeatureLanguageEQ applies the EQ predicate on the "feature_language" field.
+func FeatureLanguageEQ(v string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldEQ(FieldFeatureLanguage, v))
+}
+
+// FeatureLanguageNEQ applies the NEQ predicate on the "feature_language" field.
+func FeatureLanguageNEQ(v string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldNEQ(FieldFeatureLanguage, v))
+}
+
+// FeatureLanguageIn applies the In predicate on the "feature_language" field.
+func FeatureLanguageIn(vs ...string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldIn(FieldFeatureLanguage, vs...))
+}
+
+// FeatureLanguageNotIn applies the NotIn predicate on the "feature_language" field.
+func FeatureLanguageNotIn(vs ...string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldNotIn(FieldFeatureLanguage, vs...))
+}
+
+// FeatureLanguageGT applies the GT predicate on the "feature_language" field.
+func FeatureLanguageGT(v string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldGT(FieldFeatureLanguage, v))
+}
+
+// FeatureLanguageGTE applies the GTE predicate on the "feature_language" field.
+func FeatureLanguageGTE(v string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldGTE(FieldFeatureLanguage, v))
+}
+
+// FeatureLanguageLT applies the LT predicate on the "feature_language" field.
+func FeatureLanguageLT(v string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldLT(FieldFeatureLanguage, v))
+}
+
+// FeatureLanguageLTE applies the LTE predicate on the "feature_language" field.
+func FeatureLanguageLTE(v string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldLTE(FieldFeatureLanguage, v))
+}
+
+// FeatureLanguageContains applies the Contains predicate on the "feature_language" field.
+func FeatureLanguageContains(v string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldContains(FieldFeatureLanguage, v))
+}
+
+// FeatureLanguageHasPrefix applies the HasPrefix predicate on the "feature_language" field.
+func FeatureLanguageHasPrefix(v string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldHasPrefix(FieldFeatureLanguage, v))
+}
+
+// FeatureLanguageHasSuffix applies the HasSuffix predicate on the "feature_language" field.
+func FeatureLanguageHasSuffix(v string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldHasSuffix(FieldFeatureLanguage, v))
+}
+
+// FeatureLanguageEqualFold applies the EqualFold predicate on the "feature_language" field.
+func FeatureLanguageEqualFold(v string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldEqualFold(FieldFeatureLanguage, v))
+}
+
+// FeatureLanguageContainsFold applies the ContainsFold predicate on the "feature_language" field.
+func FeatureLanguageContainsFold(v string) predicate.TelegramChatFeatureFlags {
+	return predicate.TelegramChatFeatureFlags(sql.FieldContainsFold(FieldFeatureLanguage, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v int64) predicate.TelegramChatFeatureFlags {
 	return predicate.TelegramChatFeatureFlags(sql.FieldEQ(FieldCreatedAt, v))
@@ -345,32 +415,15 @@ func UpdatedAtLTE(v int64) predicate.TelegramChatFeatureFlags {
 
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.TelegramChatFeatureFlags) predicate.TelegramChatFeatureFlags {
-	return predicate.TelegramChatFeatureFlags(func(s *sql.Selector) {
-		s1 := s.Clone().SetP(nil)
-		for _, p := range predicates {
-			p(s1)
-		}
-		s.Where(s1.P())
-	})
+	return predicate.TelegramChatFeatureFlags(sql.AndPredicates(predicates...))
 }
 
 // Or groups predicates with the OR operator between them.
 func Or(predicates ...predicate.TelegramChatFeatureFlags) predicate.TelegramChatFeatureFlags {
-	return predicate.TelegramChatFeatureFlags(func(s *sql.Selector) {
-		s1 := s.Clone().SetP(nil)
-		for i, p := range predicates {
-			if i > 0 {
-				s1.Or()
-			}
-			p(s1)
-		}
-		s.Where(s1.P())
-	})
+	return predicate.TelegramChatFeatureFlags(sql.OrPredicates(predicates...))
 }
 
 // Not applies the not operator on the given predicate.
 func Not(p predicate.TelegramChatFeatureFlags) predicate.TelegramChatFeatureFlags {
-	return predicate.TelegramChatFeatureFlags(func(s *sql.Selector) {
-		p(s.Not())
-	})
+	return predicate.TelegramChatFeatureFlags(sql.NotPredicates(p))
 }

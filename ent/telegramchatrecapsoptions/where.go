@@ -68,6 +68,16 @@ func ManualRecapRatePerSeconds(v int64) predicate.TelegramChatRecapsOptions {
 	return predicate.TelegramChatRecapsOptions(sql.FieldEQ(FieldManualRecapRatePerSeconds, v))
 }
 
+// AutoRecapRatesPerDay applies equality check predicate on the "auto_recap_rates_per_day" field. It's identical to AutoRecapRatesPerDayEQ.
+func AutoRecapRatesPerDay(v int) predicate.TelegramChatRecapsOptions {
+	return predicate.TelegramChatRecapsOptions(sql.FieldEQ(FieldAutoRecapRatesPerDay, v))
+}
+
+// PinAutoRecapMessage applies equality check predicate on the "pin_auto_recap_message" field. It's identical to PinAutoRecapMessageEQ.
+func PinAutoRecapMessage(v bool) predicate.TelegramChatRecapsOptions {
+	return predicate.TelegramChatRecapsOptions(sql.FieldEQ(FieldPinAutoRecapMessage, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v int64) predicate.TelegramChatRecapsOptions {
 	return predicate.TelegramChatRecapsOptions(sql.FieldEQ(FieldCreatedAt, v))
@@ -198,6 +208,56 @@ func ManualRecapRatePerSecondsLTE(v int64) predicate.TelegramChatRecapsOptions {
 	return predicate.TelegramChatRecapsOptions(sql.FieldLTE(FieldManualRecapRatePerSeconds, v))
 }
 
+// AutoRecapRatesPerDayEQ applies the EQ predicate on the "auto_recap_rates_per_day" field.
+func AutoRecapRatesPerDayEQ(v int) predicate.TelegramChatRecapsOptions {
+	return predicate.TelegramChatRecapsOptions(sql.FieldEQ(FieldAutoRecapRatesPerDay, v))
+}
+
+// AutoRecapRatesPerDayNEQ applies the NEQ predicate on the "auto_recap_rates_per_day" field.
+func AutoRecapRatesPerDayNEQ(v int) predicate.TelegramChatRecapsOptions {
+	return predicate.TelegramChatRecapsOptions(sql.FieldNEQ(FieldAutoRecapRatesPerDay, v))
+}
+
+// AutoRecapRatesPerDayIn applies the In predicate on the "auto_recap_rates_per_day" field.
+func AutoRecapRatesPerDayIn(vs ...int) predicate.TelegramChatRecapsOptions {
+	return predicate.TelegramChatRecapsOptions(sql.FieldIn(FieldAutoRecapRatesPerDay, vs...))
+}
+
+// AutoRecapRatesPerDayNotIn applies the NotIn predicate on the "auto_recap_rates_per_day" field.
+func AutoRecapRatesPerDayNotIn(vs ...int) predicate.TelegramChatRecapsOptions {
+	return predicate.TelegramChatRecapsOptions(sql.FieldNotIn(FieldAutoRecapRatesPerDay, vs...))
+}
+
+// AutoRecapRatesPerDayGT applies the GT predicate on the "auto_recap_rates_per_day" field.
+func AutoRecapRatesPerDayGT(v int) predicate.TelegramChatRecapsOptions {
+	return predicate.TelegramChatRecapsOptions(sql.FieldGT(FieldAutoRecapRatesPerDay, v))
+}
+
+// AutoRecapRatesPerDayGTE applies the GTE predicate on the "auto_recap_rates_per_day" field.
+func AutoRecapRatesPerDayGTE(v int) predicate.TelegramChatRecapsOptions {
+	return predicate.TelegramChatRecapsOptions(sql.FieldGTE(FieldAutoRecapRatesPerDay, v))
+}
+
+// AutoRecapRatesPerDayLT applies the LT predicate on the "auto_recap_rates_per_day" field.
+func AutoRecapRatesPerDayLT(v int) predicate.TelegramChatRecapsOptions {
+	return predicate.TelegramChatRecapsOptions(sql.FieldLT(FieldAutoRecapRatesPerDay, v))
+}
+
+// AutoRecapRatesPerDayLTE applies the LTE predicate on the "auto_recap_rates_per_day" field.
+func AutoRecapRatesPerDayLTE(v int) predicate.TelegramChatRecapsOptions {
+	return predicate.TelegramChatRecapsOptions(sql.FieldLTE(FieldAutoRecapRatesPerDay, v))
+}
+
+// PinAutoRecapMessageEQ applies the EQ predicate on the "pin_auto_recap_message" field.
+func PinAutoRecapMessageEQ(v bool) predicate.TelegramChatRecapsOptions {
+	return predicate.TelegramChatRecapsOptions(sql.FieldEQ(FieldPinAutoRecapMessage, v))
+}
+
+// PinAutoRecapMessageNEQ applies the NEQ predicate on the "pin_auto_recap_message" field.
+func PinAutoRecapMessageNEQ(v bool) predicate.TelegramChatRecapsOptions {
+	return predicate.TelegramChatRecapsOptions(sql.FieldNEQ(FieldPinAutoRecapMessage, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v int64) predicate.TelegramChatRecapsOptions {
 	return predicate.TelegramChatRecapsOptions(sql.FieldEQ(FieldCreatedAt, v))
@@ -280,32 +340,15 @@ func UpdatedAtLTE(v int64) predicate.TelegramChatRecapsOptions {
 
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.TelegramChatRecapsOptions) predicate.TelegramChatRecapsOptions {
-	return predicate.TelegramChatRecapsOptions(func(s *sql.Selector) {
-		s1 := s.Clone().SetP(nil)
-		for _, p := range predicates {
-			p(s1)
-		}
-		s.Where(s1.P())
-	})
+	return predicate.TelegramChatRecapsOptions(sql.AndPredicates(predicates...))
 }
 
 // Or groups predicates with the OR operator between them.
 func Or(predicates ...predicate.TelegramChatRecapsOptions) predicate.TelegramChatRecapsOptions {
-	return predicate.TelegramChatRecapsOptions(func(s *sql.Selector) {
-		s1 := s.Clone().SetP(nil)
-		for i, p := range predicates {
-			if i > 0 {
-				s1.Or()
-			}
-			p(s1)
-		}
-		s.Where(s1.P())
-	})
+	return predicate.TelegramChatRecapsOptions(sql.OrPredicates(predicates...))
 }
 
 // Not applies the not operator on the given predicate.
 func Not(p predicate.TelegramChatRecapsOptions) predicate.TelegramChatRecapsOptions {
-	return predicate.TelegramChatRecapsOptions(func(s *sql.Selector) {
-		p(s.Not())
-	})
+	return predicate.TelegramChatRecapsOptions(sql.NotPredicates(p))
 }

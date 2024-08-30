@@ -1,0 +1,12 @@
+{
+    "go.inferGopath": false,
+    "cSpell.words": [
+        "autorecap",
+        "goopenai",
+        "telegramchatfeatureflags",
+        "tgbotapi",
+        "thirdparty",
+        "timecapsule",
+        "timecapsules"
+    ]
+}

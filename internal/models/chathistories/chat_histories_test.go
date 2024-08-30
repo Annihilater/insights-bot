@@ -17,6 +17,7 @@ import (
 	"github.com/nekomeowww/insights-bot/internal/configs"
 	"github.com/nekomeowww/insights-bot/internal/datastore"
 	"github.com/nekomeowww/insights-bot/internal/lib"
+	"github.com/nekomeowww/insights-bot/internal/thirdparty/openai"
 	"github.com/nekomeowww/insights-bot/internal/thirdparty/openai/openaimock"
 	"github.com/nekomeowww/insights-bot/pkg/tutils"
 	"github.com/nekomeowww/xo"
@@ -92,7 +93,7 @@ func TestExtractTextFromMessage(t *testing.T) {
 			}, nil
 		}
 
-		expect := "看看这些链接：[Documentation](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters/#Extended-Grapheme-Clusters) 、[GPT-4 Developer Livestream - YouTube](https://www.youtube.com/watch?v=outcGtbnMuQ) [GitHub - nekomeowww/insights-bot: A bot works with OpenAI GPT models to provide insights for your info flows.](https://github.com/nekomeowww/insights-bot) 还有 [这个](https://matters.town/@1435Club/322889-这几天-web3在大理发生了什么)，和这个 [11年前，Go 1发布了。Google Developers Europe呼吁大家庆祝这一天，加入当地见面会和试用Go Playground。如果你和他们一样是一位Gopher，请分享这条推文。](https://twitter.com/GoogleDevEurope/status/1640667303158198272)"
+		expect := "看看这些链接：[Documentation](https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters/#Extended-Grapheme-Clusters) 、[GPT-4 Developer Livestream - YouTube](https://www.youtube.com/watch?v=outcGtbnMuQ) [GitHub - nekomeowww/insights-bot: A bot works with OpenAI GPT models to provide insights for your info flows.](https://github.com/nekomeowww/insights-bot) 还有 [这个](https://matters.town/@1435Club/322889-这几天-web3在大理发生了什么)，和这个 https://twitter.com/GoogleDevEurope/status/1640667303158198272"
 		assert.Equal(expect, model.ExtractTextFromMessage(message))
 	})
 }
@@ -232,4 +233,64 @@ func TestFindLastOneHourChatHistories(t *testing.T) {
 	assert.Equal([]int64{1, 2, 3}, lo.Map(histories, func(item *ent.ChatHistories, _ int) int64 {
 		return item.MessageID
 	}))
+}
+
+func TestEncodeMessageIDIntoVirtualMessageID(t *testing.T) {
+	messageID1 := xo.RandomInt64()
+	messageID2 := xo.RandomInt64()
+	messageID3 := xo.RandomInt64()
+	replyToMessageID1 := xo.RandomInt64()
+
+	mVirtualIDs := model.encodeMessageIDIntoVirtualMessageID([]*ent.ChatHistories{
+		{MessageID: messageID1, RepliedToMessageID: replyToMessageID1},
+		{MessageID: messageID2},
+		{MessageID: messageID3},
+	})
+
+	assert.Equal(t, map[int64]int64{
+		1: messageID1,
+		2: replyToMessageID1,
+		3: messageID2,
+		4: messageID3,
+	}, mVirtualIDs)
+}
+
+func TestDecodeMessageIDFromVirtualMessageID(t *testing.T) {
+	messageID1 := xo.RandomInt64()
+	messageID2 := xo.RandomInt64()
+	messageID3 := xo.RandomInt64()
+	replyToMessageID1 := xo.RandomInt64()
+
+	mVirtualIDs := map[int64]int64{
+		1: messageID1,
+		2: replyToMessageID1,
+		3: messageID2,
+		4: messageID3,
+	}
+
+	outputs := []*openai.ChatHistorySummarizationOutputs{
+		{SinceID: 1, Discussion: []*openai.ChatHistorySummarizationOutputsDiscussion{
+			{KeyIDs: []int64{1, 2}},
+		}},
+		{SinceID: 3, Discussion: []*openai.ChatHistorySummarizationOutputsDiscussion{
+			{KeyIDs: []int64{3}},
+		}},
+		{SinceID: 4, Discussion: []*openai.ChatHistorySummarizationOutputsDiscussion{
+			{KeyIDs: []int64{4}},
+		}},
+	}
+
+	model.decodeMessageIDFromVirtualMessageID(mVirtualIDs, outputs)
+
+	assert.Equal(t, []*openai.ChatHistorySummarizationOutputs{
+		{SinceID: messageID1, Discussion: []*openai.ChatHistorySummarizationOutputsDiscussion{
+			{KeyIDs: []int64{messageID1, replyToMessageID1}},
+		}},
+		{SinceID: messageID2, Discussion: []*openai.ChatHistorySummarizationOutputsDiscussion{
+			{KeyIDs: []int64{messageID2}},
+		}},
+		{SinceID: messageID3, Discussion: []*openai.ChatHistorySummarizationOutputsDiscussion{
+			{KeyIDs: []int64{messageID3}},
+		}},
+	}, outputs)
 }

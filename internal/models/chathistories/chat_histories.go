@@ -19,6 +19,7 @@ import (
 
 	"github.com/nekomeowww/insights-bot/ent"
 	"github.com/nekomeowww/insights-bot/ent/chathistories"
+	"github.com/nekomeowww/insights-bot/internal/configs"
 	"github.com/nekomeowww/insights-bot/internal/datastore"
 	"github.com/nekomeowww/insights-bot/internal/thirdparty/openai"
 	"github.com/nekomeowww/insights-bot/pkg/bots/tgbot"
@@ -45,6 +46,7 @@ type NewModelParams struct {
 
 	Lifecycle fx.Lifecycle
 
+	Config *configs.Config
 	Logger *logger.Logger
 	Ent    *datastore.Ent
 	OpenAI openai.Client
@@ -52,6 +54,7 @@ type NewModelParams struct {
 }
 
 type Model struct {
+	config   *configs.Config
 	logger   *logger.Logger
 	ent      *datastore.Ent
 	openAI   openai.Client
@@ -62,6 +65,7 @@ type Model struct {
 func NewModel() func(NewModelParams) (*Model, error) {
 	return func(param NewModelParams) (*Model, error) {
 		return &Model{
+			config:   param.Config,
 			logger:   param.Logger,
 			ent:      param.Ent,
 			openAI:   param.OpenAI,
@@ -86,6 +90,7 @@ func (m *Model) ExtractTextFromMessage(message *tgbotapi.Message) string {
 		endIndex := startIndex + entity.Length
 		var title string
 		var href string
+
 		switch entity.Type {
 		case "url":
 			href = string(utf16.Decode(textUTF16[startIndex:endIndex]))
@@ -331,8 +336,16 @@ func (m *Model) FindLastOneHourChatHistories(chatID int64) ([]*ent.ChatHistories
 	return m.FindChatHistoriesByTimeBefore(chatID, time.Hour)
 }
 
-func (m *Model) FindLastSixHourChatHistories(chatID int64) ([]*ent.ChatHistories, error) {
+func (m *Model) FindLast6HourChatHistories(chatID int64) ([]*ent.ChatHistories, error) {
 	return m.FindChatHistoriesByTimeBefore(chatID, 6*time.Hour)
+}
+
+func (m *Model) FindLast8HourChatHistories(chatID int64) ([]*ent.ChatHistories, error) {
+	return m.FindChatHistoriesByTimeBefore(chatID, 8*time.Hour)
+}
+
+func (m *Model) FindLast12HourChatHistories(chatID int64) ([]*ent.ChatHistories, error) {
+	return m.FindChatHistoriesByTimeBefore(chatID, 12*time.Hour)
 }
 
 func (m *Model) FindChatHistoriesByTimeBefore(chatID int64, before time.Duration) ([]*ent.ChatHistories, error) {
@@ -363,9 +376,42 @@ func formatFullNameAndUsername(fullName, username string) string {
 	return strings.ReplaceAll(fullName, "#", "")
 }
 
+func (m *Model) encodeMessageIDIntoVirtualMessageID(histories []*ent.ChatHistories) map[int64]int64 {
+	virtualMessageID := int64(1)
+	mMessageIDToVirtualMessageID := make(map[int64]int64)
+
+	for _, message := range histories {
+		mMessageIDToVirtualMessageID[virtualMessageID] = message.MessageID
+		message.MessageID = virtualMessageID
+		virtualMessageID++
+
+		if message.RepliedToMessageID != 0 {
+			mMessageIDToVirtualMessageID[virtualMessageID] = message.RepliedToMessageID
+			message.RepliedToMessageID = virtualMessageID
+			virtualMessageID++
+		}
+	}
+
+	return mMessageIDToVirtualMessageID
+}
+
+func (m *Model) decodeMessageIDFromVirtualMessageID(mMessageIDToVirtualMessageID map[int64]int64, outputs []*openai.ChatHistorySummarizationOutputs) {
+	for _, o := range outputs {
+		for _, d := range o.Discussion {
+			d.KeyIDs = lo.Map(d.KeyIDs, func(virtualMessageID int64, i int) int64 {
+				return mMessageIDToVirtualMessageID[virtualMessageID]
+			})
+		}
+
+		o.SinceID = mMessageIDToVirtualMessageID[o.SinceID]
+	}
+}
+
 func (m *Model) SummarizeChatHistories(chatID int64, chatType telegram.ChatType, histories []*ent.ChatHistories) (uuid.UUID, []string, error) {
 	historiesLLMFriendly := make([]string, 0, len(histories))
 	historiesIncludedMessageIDs := make([]int64, 0)
+
+	mMessageIDToVirtualMessageID := m.encodeMessageIDIntoVirtualMessageID(histories)
 
 	for _, message := range histories {
 		if message.RepliedToMessageID == 0 {
@@ -401,6 +447,9 @@ func (m *Model) SummarizeChatHistories(chatID int64, chatType telegram.ChatType,
 	if err != nil {
 		return uuid.Nil, make([]string, 0), err
 	}
+
+	// reverse virtual message id to real message id
+	m.decodeMessageIDFromVirtualMessageID(mMessageIDToVirtualMessageID, summarizations)
 
 	ss, err := m.renderRecapTemplates(chatID, chatType, summarizations)
 	if err != nil {
